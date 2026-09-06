@@ -697,7 +697,26 @@
         var parsed = Papa.parse(csvText.trim(), { skipEmptyLines: true });
         var raw = parsed.data;
         if(!raw || raw.length < 1){ throw new Error('Empty sheet'); }
-        var headers = raw[0];
+
+        // Scan the first few rows to find the one that actually looks like
+        // a header row (in case there's a title row above it), rather than
+        // always assuming row 1 is the header.
+        var candidateSets = [['crew'],['basecrew'],['supportcrew'],['workordernumber','workorder','wo'],
+          ['projectname','project'],['phase'],['scheduletype'],['task'],['scheduledate'],['duedate'],
+          ['status'],['accountbalance','projectbalance','balance','projectbudget','budget']];
+        var headerRowIdx = 0, bestScore = -1;
+        for(var hr = 0; hr < Math.min(raw.length, 5); hr++){
+          var trialMap = {};
+          (raw[hr] || []).forEach(function(h, i){ trialMap[normalizeHeader(h)] = i; });
+          var score = 0;
+          candidateSets.forEach(function(cands){
+            for(var c = 0; c < cands.length; c++){ if(trialMap[cands[c]] !== undefined){ score++; break; } }
+          });
+          if(score > bestScore){ bestScore = score; headerRowIdx = hr; }
+        }
+        if(bestScore <= 0){ throw new Error('Could not find a recognizable header row in the first 5 rows of the sheet.'); }
+
+        var headers = raw[headerRowIdx];
         var headerMap = {};
         headers.forEach(function(h, i){ headerMap[normalizeHeader(h)] = i; });
 
@@ -725,7 +744,7 @@
         });
 
         var rows = [];
-        for(var i=1;i<raw.length;i++){
+        for(var i=headerRowIdx+1;i<raw.length;i++){
           var r = raw[i];
           if(!r || r.every(function(c){ return !c || !String(c).trim(); })) continue;
           var schedDate = kSchedDate!==null ? parseFlexibleDate(r[kSchedDate]) : null;
@@ -742,7 +761,7 @@
             baseCrew: kBaseCrew!==null ? (r[kBaseCrew]||'').trim() : '',
             supportCrew: kSupportCrew!==null ? (r[kSupportCrew]||'').trim() : '',
             workOrder: kWO!==null ? (r[kWO]||'').trim() : '',
-            project: kProject!==null ? (r[kProject]||'').trim() : '(untitled project)',
+            project: kProject!==null ? (r[kProject]||'').trim() : '',
             phase: kPhase!==null ? (r[kPhase]||'').trim() : '',
             schedType: kSchedType!==null ? (r[kSchedType]||'').trim() : '',
             task: kTask!==null ? (r[kTask]||'').trim() : '',
@@ -1137,4 +1156,3 @@
 </script>
 </body>
 </html>
-
