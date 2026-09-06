@@ -1123,6 +1123,13 @@
   loadFromUrl(document.getElementById('sheet-url-input').value.trim());
   render();
 
+  // Refresh from the sheet every 15 minutes so a TV/kiosk display doesn't
+  // go stale after the initial load — matches the refresh cadence used by
+  // the other Field Ops Board panels (weather, deliverables).
+  setInterval(function(){
+    loadFromUrl(document.getElementById('sheet-url-input').value.trim());
+  }, 15 * 60 * 1000);
+
 })();
 </script>
 </body>
