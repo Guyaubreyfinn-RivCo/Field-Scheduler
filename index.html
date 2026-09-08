@@ -22,6 +22,7 @@
     --progress:#C97A17;
     --done:#2E9F6B;
     --overdue:#D93D3D;
+    --tbd:#E0B400;
     --none:#8792A3;
   }
   *{box-sizing:border-box;}
@@ -330,6 +331,7 @@
     font-size:15px;
   }
   .later-row.overdue{border-left-color:var(--overdue);}
+  .later-row.sched-later{border-left-color:var(--done);}
   .later-row .lr-title{font-weight:600;}
   .later-row .lr-meta{
     font-family:'IBM Plex Mono', monospace;
@@ -540,6 +542,7 @@
         <div class="legend-row"><span class="legend-dot" style="background:var(--scheduled)"></span>Scheduled</div>
         <div class="legend-row"><span class="legend-dot" style="background:var(--progress)"></span>In progress</div>
         <div class="legend-row"><span class="legend-dot" style="background:var(--done)"></span>Complete</div>
+        <div class="legend-row"><span class="legend-dot" style="background:var(--tbd)"></span>TBD</div>
         <div class="legend-row"><span class="legend-dot" style="background:var(--overdue)"></span>Overdue</div>
       </div>
       <div style="font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:var(--text-muted); margin-top:10px; line-height:1.5;">
@@ -597,9 +600,10 @@
     progress: 'var(--progress)',
     done: 'var(--done)',
     overdue: 'var(--overdue)',
+    tbd: 'var(--tbd)',
     none: 'var(--none)'
   };
-  var STATUS_LABELS = { scheduled:'Scheduled', progress:'In progress', done:'Complete', overdue:'Overdue', none:'Unspecified' };
+  var STATUS_LABELS = { scheduled:'Scheduled', progress:'In progress', done:'Complete', overdue:'Overdue', tbd:'TBD', none:'Unspecified' };
   var WINDOW_DAYS = 14;
 
   var state = {
@@ -633,7 +637,7 @@
     var day, month;
     if(a > 12){ day = a; month = b; }
     else if(b > 12){ day = b; month = a; }
-    else { month = a; day = b; } // default MM/DD (US format), matching how dates are entered in this sheet
+    else { day = a; month = b; } // default DD/MM as used in this sheet
     var d = new Date(y, month-1, day);
     return isNaN(d.getTime()) ? null : d;
   }
@@ -649,14 +653,16 @@
     return null;
   }
 
-  function classifyStatus(statusRaw, dueDate){
+  function classifyStatus(statusRaw, dueDate, schedTypeRaw){
     var s = (statusRaw||'').toLowerCase();
+    var st = (schedTypeRaw||'').toLowerCase();
     var today = startOfDay(new Date());
     if(/complete|done|closed|finished/.test(s)) return 'done';
     if(/overdue|late/.test(s)) return 'overdue';
     if(dueDate && startOfDay(dueDate) < today) return 'overdue';
-    if(/progress|active|in\s*progress|working/.test(s)) return 'progress';
-    return 'scheduled';
+    if(/in\s*progress|active|working/.test(s)) return 'progress';
+    if(/not\s*started/.test(s) && /scheduled/.test(st)) return 'scheduled';
+    return 'tbd';
   }
 
   // Where a due date falls relative to "today": on the board (near), in the Later list, or Overdue.
@@ -686,9 +692,9 @@
       setStatus('Could not parse a sheet ID from that URL.', true);
       return;
     }
-    var csvUrl = 'https://docs.google.com/spreadsheets/d/' + info.id + '/gviz/tq?tqx=out:csv&gid=' + info.gid + '&headers=1&_ts=' + Date.now();
+    var csvUrl = 'https://docs.google.com/spreadsheets/d/' + info.id + '/gviz/tq?tqx=out:csv&gid=' + info.gid;
     setStatus('Loading schedule…', false);
-    fetch(csvUrl, { cache: 'no-store' })
+    fetch(csvUrl)
       .then(function(res){
         if(!res.ok) throw new Error('HTTP ' + res.status);
         return res.text();
@@ -697,26 +703,7 @@
         var parsed = Papa.parse(csvText.trim(), { skipEmptyLines: true });
         var raw = parsed.data;
         if(!raw || raw.length < 1){ throw new Error('Empty sheet'); }
-
-        // Scan the first few rows to find the one that actually looks like
-        // a header row (in case there's a title row above it), rather than
-        // always assuming row 1 is the header.
-        var candidateSets = [['crew'],['basecrew'],['supportcrew'],['workordernumber','workorder','wo'],
-          ['projectname','project'],['phase'],['scheduletype'],['task'],['scheduledate'],['duedate'],
-          ['status'],['accountbalance','projectbalance','balance','projectbudget','budget']];
-        var headerRowIdx = 0, bestScore = -1;
-        for(var hr = 0; hr < Math.min(raw.length, 5); hr++){
-          var trialMap = {};
-          (raw[hr] || []).forEach(function(h, i){ trialMap[normalizeHeader(h)] = i; });
-          var score = 0;
-          candidateSets.forEach(function(cands){
-            for(var c = 0; c < cands.length; c++){ if(trialMap[cands[c]] !== undefined){ score++; break; } }
-          });
-          if(score > bestScore){ bestScore = score; headerRowIdx = hr; }
-        }
-        if(bestScore <= 0){ throw new Error('Could not find a recognizable header row in the first 5 rows of the sheet.'); }
-
-        var headers = raw[headerRowIdx];
+        var headers = raw[0];
         var headerMap = {};
         headers.forEach(function(h, i){ headerMap[normalizeHeader(h)] = i; });
 
@@ -744,7 +731,7 @@
         });
 
         var rows = [];
-        for(var i=headerRowIdx+1;i<raw.length;i++){
+        for(var i=1;i<raw.length;i++){
           var r = raw[i];
           if(!r || r.every(function(c){ return !c || !String(c).trim(); })) continue;
           var schedDate = kSchedDate!==null ? parseFlexibleDate(r[kSchedDate]) : null;
@@ -761,14 +748,14 @@
             baseCrew: kBaseCrew!==null ? (r[kBaseCrew]||'').trim() : '',
             supportCrew: kSupportCrew!==null ? (r[kSupportCrew]||'').trim() : '',
             workOrder: kWO!==null ? (r[kWO]||'').trim() : '',
-            project: kProject!==null ? (r[kProject]||'').trim() : '',
+            project: kProject!==null ? (r[kProject]||'').trim() : '(untitled project)',
             phase: kPhase!==null ? (r[kPhase]||'').trim() : '',
             schedType: kSchedType!==null ? (r[kSchedType]||'').trim() : '',
             task: kTask!==null ? (r[kTask]||'').trim() : '',
             schedDate: schedDate,
             dueDate: dueDate,
             statusRaw: statusRaw,
-            status: classifyStatus(statusRaw, dueDate),
+            status: classifyStatus(statusRaw, dueDate, kSchedType!==null ? r[kSchedType] : ''),
             balance: kBalance!==null ? (r[kBalance]||'').trim() : '',
             extras: extras
           });
@@ -833,20 +820,33 @@
   }
 
   function buildLaterAndOverdue(){
-    var later = [], overdue = [];
-    var seen = {};
+    var later = [], overdue = [], schedLater = [];
+    var seenDue = {}, seenSched = {};
+    var today = startOfDay(new Date());
+    var limit = addDays(today, WINDOW_DAYS - 1);
     filteredRows().forEach(function(r){
-      if(!r.dueDate) return;
-      var bucket = dueBucket(r.dueDate);
-      if(bucket !== 'later' && bucket !== 'overdue') return;
-      var k = (r.workOrder||r.project) + '|' + dateKey(r.dueDate);
-      if(seen[k]) return;
-      seen[k] = true;
-      (bucket === 'later' ? later : overdue).push(r);
+      if(r.dueDate){
+        var bucket = dueBucket(r.dueDate);
+        if(bucket === 'later' || bucket === 'overdue'){
+          var k1 = (r.workOrder||r.project) + '|' + dateKey(r.dueDate);
+          if(!seenDue[k1]){
+            seenDue[k1] = true;
+            (bucket === 'later' ? later : overdue).push(r);
+          }
+        }
+      }
+      if(r.schedDate && startOfDay(r.schedDate) > limit){
+        var k2 = (r.workOrder||r.project) + '|' + dateKey(r.schedDate);
+        if(!seenSched[k2]){
+          seenSched[k2] = true;
+          schedLater.push(r);
+        }
+      }
     });
     later.sort(function(a,b){ return a.dueDate - b.dueDate; });
     overdue.sort(function(a,b){ return a.dueDate - b.dueDate; });
-    return { later: later, overdue: overdue };
+    schedLater.sort(function(a,b){ return a.schedDate - b.schedDate; });
+    return { later: later, overdue: overdue, schedLater: schedLater };
   }
 
   // ---------- render: sidebar ----------
@@ -991,7 +991,7 @@
       wrap.appendChild(h1);
       var list1 = document.createElement('div');
       list1.className = 'later-list';
-      data.overdue.forEach(function(r){ list1.appendChild(buildLaterRow(r, true)); });
+      data.overdue.forEach(function(r){ list1.appendChild(buildLaterRow(r, 'overdue')); });
       wrap.appendChild(list1);
     }
 
@@ -1007,23 +1007,42 @@
     } else {
       var list2 = document.createElement('div');
       list2.className = 'later-list';
-      data.later.forEach(function(r){ list2.appendChild(buildLaterRow(r, false)); });
+      data.later.forEach(function(r){ list2.appendChild(buildLaterRow(r, 'due-later')); });
       wrap.appendChild(list2);
+    }
+
+    var h3 = document.createElement('h3');
+    h3.textContent = 'Scheduled later (beyond 2 weeks)';
+    wrap.appendChild(h3);
+    if(data.schedLater.length === 0){
+      var empty2 = document.createElement('div');
+      empty2.className = 'empty-note';
+      empty2.style.padding = '10px 0';
+      empty2.textContent = 'Nothing scheduled further out right now.';
+      wrap.appendChild(empty2);
+    } else {
+      var list3 = document.createElement('div');
+      list3.className = 'later-list';
+      data.schedLater.forEach(function(r){ list3.appendChild(buildLaterRow(r, 'sched-later')); });
+      wrap.appendChild(list3);
     }
     return wrap;
   }
 
-  function buildLaterRow(r, isOverdue){
+  function buildLaterRow(r, kind){
+    var isOverdue = kind === 'overdue';
+    var dateVal = kind === 'sched-later' ? r.schedDate : r.dueDate;
+    var dateLabel = kind === 'sched-later' ? 'Scheduled' : 'Due';
     var row = document.createElement('div');
-    row.className = 'later-row' + (isOverdue ? ' overdue' : '');
+    row.className = 'later-row' + (isOverdue ? ' overdue' : '') + (kind === 'sched-later' ? ' sched-later' : '');
     var today = startOfDay(new Date());
-    var days = Math.round((startOfDay(r.dueDate) - today) / 86400000);
+    var days = Math.round((startOfDay(dateVal) - today) / 86400000);
     var daysLabel = isOverdue ? (Math.abs(days) + 'd overdue') : (days + 'd out');
     row.innerHTML =
       '<div><span class="lr-title">' + (r.workOrder ? r.workOrder + ' — ' : '') + (r.task || r.project) + '</span></div>' +
-      '<div class="lr-meta">' + r.project + (r.crew ? ' · ' + r.crew : '') + ' · Due ' + r.dueDate.toLocaleDateString() + ' · ' + daysLabel + '</div>';
+      '<div class="lr-meta">' + r.project + (r.crew ? ' · ' + r.crew : '') + ' · ' + dateLabel + ' ' + dateVal.toLocaleDateString() + ' · ' + daysLabel + '</div>';
     row.addEventListener('click', function(){
-      openDrawerForDate(dateKey(r.dueDate), [{ row:r, kind:'due' }]);
+      openDrawerForDate(dateKey(dateVal), [{ row:r, kind: kind === 'sched-later' ? 'scheduled' : 'due' }]);
     });
     return row;
   }
@@ -1040,15 +1059,12 @@
 
     var title = document.createElement('div');
     title.className = 'task-title';
-    var titleParts = [];
-    if(t.crew) titleParts.push(t.crew);
-    if(t.workOrder) titleParts.push('WO ' + t.workOrder);
-    if(t.project) titleParts.push(t.project);
-    title.textContent = titleParts.length ? titleParts.join(' — ') : (t.task || '(untitled)');
+    title.textContent = t.task || t.project;
     card.appendChild(title);
 
     var metaBits = [];
-    if(t.task) metaBits.push('<span>' + t.task + (t.phase?(' — Phase '+t.phase):'') + '</span>');
+    if(t.project) metaBits.push('<span>' + t.project + (t.phase?(' — Phase '+t.phase):'') + '</span>');
+    if(t.crew) metaBits.push('<span>Crew <b>' + t.crew + '</b></span>');
     if(t.baseCrew) metaBits.push('<span>Base <b>' + t.baseCrew + '</b></span>');
     if(t.supportCrew) metaBits.push('<span>Support <b>' + t.supportCrew + '</b></span>');
     if(t.schedType) metaBits.push('<span>' + t.schedType + '</span>');
@@ -1144,13 +1160,6 @@
   // ---------- boot ----------
   loadFromUrl(document.getElementById('sheet-url-input').value.trim());
   render();
-
-  // Refresh from the sheet every 15 minutes so a TV/kiosk display doesn't
-  // go stale after the initial load — matches the refresh cadence used by
-  // the other Field Ops Board panels (weather, deliverables).
-  setInterval(function(){
-    loadFromUrl(document.getElementById('sheet-url-input').value.trim());
-  }, 15 * 60 * 1000);
 
 })();
 </script>
