@@ -1,0 +1,841 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1920, initial-scale=1.0">
+<title>Field Ops Board — Riverside, CA</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
+
+  :root{
+    --bg: #FFFFFF;
+    --panel: #FFFFFF;
+    --panel-line: #DDE3EC;
+    --text: #16233A;
+    --muted: #6B7891;
+    --weather: #1478B0;
+    --weather-dim: rgba(20,120,176,0.08);
+    --space: #6C4FD6;
+    --space-dim: rgba(108,79,214,0.08);
+    --aurora: #1E9E63;
+    --field: #B3271E;
+    --field-dim: rgba(179,39,30,0.08);
+    --warn: #B3271E;
+    --links: #1478B0;
+    --links-dim: rgba(20,120,176,0.08);
+    --sched-scheduled: #2F6FBF;
+    --sched-progress: #C97A17;
+    --sched-done: #2E9F6B;
+    --sched-overdue: #D93D3D;
+    --sched-none: #8792A3;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html,body{
+    width:100%; height:100%; overflow:hidden;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-variant-numeric: tabular-nums;
+  }
+  .board{
+    width:100vw; height:100vh;
+    display:grid;
+    grid-template-rows: auto 1fr;
+    padding: 22px 28px 26px;
+  }
+
+  /* ---------- HEADER (brand/clock row + thin combined weather ribbon row) ---------- */
+  header{
+    display:flex; flex-direction:column;
+    border-bottom: 1px solid var(--panel-line);
+    padding-bottom: 14px;
+  }
+  .header-top{
+    display:flex; align-items:center; justify-content:space-between;
+    padding-bottom: 14px;
+  }
+  .brand{ display:flex; align-items:center; gap:18px; }
+  .brand img{ height:78px; width:78px; object-fit:contain; }
+  .brand .titles{ display:flex; flex-direction:column; gap:2px; }
+  .brand .title-top{
+    font-family:'Space Grotesk', sans-serif;
+    font-weight:500; font-size:16px; letter-spacing:1px; text-transform:uppercase;
+    color: var(--muted);
+  }
+  .brand .title-main{
+    font-family:'Space Grotesk', sans-serif;
+    font-weight:700; font-size:38px; letter-spacing:0.3px; line-height:1.05;
+    color: var(--field);
+  }
+  .clockwrap{ text-align:right; }
+  .clock{
+    font-family:'Space Grotesk', sans-serif;
+    font-size:42px; font-weight:600; line-height:1;
+  }
+  .dateline{ color: var(--muted); font-size:16px; margin-top:4px; }
+  .julianline{ color: var(--muted); font-size:13px; margin-top:2px; letter-spacing:0.3px; }
+
+  /* ---------- THIN COMBINED WEATHER + SPACE WEATHER RIBBON (bottom of header) ---------- */
+  .weather-ribbon{
+    display:flex; align-items:center; gap:16px;
+    white-space:nowrap; overflow:hidden;
+    height:34px;
+  }
+  .ribbon-title{
+    display:flex; align-items:center; gap:6px;
+    font-family:'Space Grotesk', sans-serif; font-weight:600; font-size:12.5px;
+    white-space:nowrap; color:var(--muted);
+  }
+  .ribbon-divider{ width:1px; align-self:stretch; background: var(--panel-line); flex-shrink:0; }
+  .ribbon-temp{
+    font-family:'Space Grotesk', sans-serif; font-size:19px; font-weight:700;
+    color: var(--weather); white-space:nowrap;
+  }
+  .ribbon-cond{ font-size:12.5px; color:var(--text); white-space:nowrap; }
+  .ribbon-stats{ display:flex; gap:14px; white-space:nowrap; }
+  .ribbon-stats .rs{ font-size:11.5px; color:var(--muted); }
+  .ribbon-stats .rs b{ color:var(--text); font-weight:600; }
+  .ribbon-forecast{ display:flex; gap:12px; white-space:nowrap; }
+  .ribbon-forecast .rf{ display:flex; align-items:baseline; gap:5px; font-size:11.5px; white-space:nowrap; }
+  .ribbon-forecast .rf .d{ color:var(--muted); }
+  .ribbon-forecast .rf .h{ font-weight:600; }
+  .ribbon-forecast .rf .l{ color:var(--muted); }
+  .ribbon-updated{ font-size:10.5px; color:var(--muted); white-space:nowrap; margin-left:auto; }
+  .ribbon-source{ font-size:10.5px; color:var(--muted); white-space:nowrap; }
+  .ribbon-swx{ display:flex; align-items:baseline; gap:10px; white-space:nowrap; }
+  .ribbon-swx .sv{ font-family:'Space Grotesk', sans-serif; font-size:13px; font-weight:700; color:var(--space); }
+  .ribbon-swx .sk{ font-size:11px; color:var(--muted); }
+
+  /* ---------- MAIN AREA (75% / 25% split, fills to bottom of page) ---------- */
+  .main-area{
+    display:flex; gap:18px;
+    min-height:0; padding-top:18px;
+  }
+  .col-left{
+    flex: 0 0 75%; max-width:75%;
+    display:flex; flex-direction:column; gap:14px;
+    min-height:0;
+  }
+  .col-right{
+    flex:1;
+    display:flex; flex-direction:column; gap:14px;
+    min-height:0;
+  }
+
+  .panel{
+    background: var(--panel);
+    border: 1px solid var(--panel-line);
+    border-radius: 14px;
+    padding: 16px 20px;
+    display:flex; flex-direction:column;
+    min-height:0;
+    position:relative;
+    overflow:hidden;
+    box-shadow: 0 2px 14px rgba(22,35,58,0.06);
+  }
+  .panel-head{
+    display:flex; align-items:center; justify-content:space-between;
+    margin-bottom:10px;
+  }
+  .panel-title{
+    font-family:'Space Grotesk', sans-serif;
+    font-size:16px; font-weight:600;
+    display:flex; align-items:center; gap:8px;
+  }
+  .dot{ width:9px; height:9px; border-radius:50%; flex-shrink:0; }
+  .dot.weather{ background: var(--weather); }
+  .dot.space{ background: var(--space); }
+  .dot.field{ background: var(--field); }
+  .dot.links{ background: var(--links); }
+  .updated{ color: var(--muted); font-size:12px; }
+
+  /* ---------- CREW STATUS SLIDESHOW (one slide per crew, auto-advancing) ---------- */
+  .slideshow-panel{ flex:1; }
+  .slide-viewport{
+    flex:1; position:relative; overflow:hidden; min-height:0;
+  }
+  .slide{
+    position:absolute; inset:0;
+    display:flex; flex-direction:column;
+    opacity:0; pointer-events:none;
+    transition: opacity 0.6s ease;
+  }
+  .slide.active{ opacity:1; pointer-events:auto; }
+  .slide-crew-name{
+    font-family:'Space Grotesk', sans-serif;
+    font-size:30px; font-weight:700; color: var(--field);
+    margin-bottom:14px; flex-shrink:0;
+  }
+  .slide-items{
+    flex:1; overflow-y:auto;
+    display:flex; flex-direction:column; gap:12px;
+  }
+  .slide-item{
+    border-left: 4px solid var(--sched-scheduled);
+    background: rgba(22,35,58,0.025);
+    border-radius: 0 10px 10px 0;
+    padding: 12px 16px;
+  }
+  .slide-item-top{ display:flex; align-items:center; gap:12px; }
+  .slide-wo{ color: var(--muted); font-size:13px; min-width:80px; }
+  .slide-project{ flex:1; font-size:16px; font-weight:600; }
+  .slide-status-pill{
+    font-size:12px; color:#fff; font-weight:600;
+    border-radius:12px; padding:3px 12px; white-space:nowrap; flex-shrink:0;
+  }
+  .slide-item-sub{ color: var(--muted); font-size:13px; margin-top:4px; }
+  .slide-deliv{
+    margin-top:8px; display:flex; align-items:center; gap:8px;
+    font-size:13px; color: var(--text);
+    background: var(--links-dim); border-radius:8px; padding:6px 10px;
+  }
+  .slide-deliv.overdue{ background: rgba(179,39,30,0.08); }
+  .slide-deliv .tag{
+    font-family:'Space Grotesk', sans-serif; font-size:10px; font-weight:700;
+    letter-spacing:0.4px; text-transform:uppercase; color:#fff;
+    background: var(--links); border-radius:8px; padding:2px 7px; flex-shrink:0;
+  }
+  .slide-deliv.overdue .tag{ background: var(--warn); }
+  .slide-empty{ color: var(--muted); font-size:15px; padding: 20px 2px; }
+  .slide-dots{
+    display:flex; justify-content:center; gap:7px; padding-top:10px; flex-shrink:0;
+  }
+  .slide-dot{
+    width:8px; height:8px; border-radius:50%;
+    background: var(--panel-line);
+    transition: background 0.3s;
+  }
+  .slide-dot.active{ background: var(--field); }
+
+  /* ---------- NAV BUTTON TILE ---------- */
+  .nav-panel{ flex:1; }
+  .nav-list{ display:flex; flex-direction:column; gap:9px; }
+  .nav-btn{
+    display:flex; align-items:center; gap:12px;
+    border:1px solid var(--panel-line); border-radius:10px;
+    padding:11px 14px; text-decoration:none; color:var(--text);
+    background: var(--links-dim);
+  }
+  .nav-btn .icon{
+    width:32px; height:32px; border-radius:8px; flex-shrink:0;
+    background: var(--links); color:#fff; display:flex; align-items:center; justify-content:center;
+    font-size:14px; font-weight:700; font-family:'Space Grotesk', sans-serif;
+  }
+  .nav-btn .name{ font-size:14px; font-weight:600; flex:1; }
+  .nav-btn .go{ font-size:16px; color:var(--links); }
+  .nav-btn.primary{ background: var(--field-dim); border-color: rgba(179,39,30,0.25); }
+  .nav-btn.primary .icon{ background: var(--field); }
+  .nav-btn.primary .go{ color: var(--field); }
+
+  .fs-toggle{
+    position:fixed; top:14px; right:14px; z-index:999;
+    width:38px; height:38px; border-radius:50%;
+    background: rgba(22,35,58,0.06); border:1px solid var(--panel-line);
+    display:flex; align-items:center; justify-content:center;
+    cursor:pointer; font-size:16px; color: var(--muted);
+    transition: opacity 0.2s;
+    opacity:0.35;
+  }
+  .fs-toggle:hover{ opacity:1; background: rgba(22,35,58,0.1); }
+</style>
+</head>
+<body>
+<button class="fs-toggle" id="fsToggle" title="Toggle fullscreen (hide/show browser bar)">⛶</button>
+<div class="board">
+
+  <header>
+    <div class="header-top">
+      <div class="brand">
+        <img src="rivco-seal.jpeg" alt="Riverside County Surveyor seal">
+        <div class="titles">
+          <span class="title-top">Riverside County Transportation</span>
+          <span class="title-main">Survey Field Operation</span>
+        </div>
+      </div>
+      <div class="clockwrap">
+        <div class="clock" id="clock">--:--</div>
+        <div class="dateline" id="dateline">Loading date…</div>
+        <div class="julianline" id="julianline">Julian date: —</div>
+      </div>
+    </div>
+
+    <!-- THIN COMBINED WEATHER + SPACE WEATHER RIBBON -->
+    <div class="weather-ribbon" id="weatherRibbon">
+      <div class="ribbon-title"><span class="dot weather"></span>Riverside</div>
+      <div class="ribbon-temp" id="wTemp">77°</div>
+      <div class="ribbon-cond" id="wCond">Clear skies, calm wind</div>
+      <div class="ribbon-stats">
+        <div class="rs">Humidity <b id="wHumidity">29%</b></div>
+        <div class="rs">Wind <b id="wWind">N 0 mph</b></div>
+        <div class="rs">Visibility <b id="wVis">10 mi</b></div>
+      </div>
+      <div class="ribbon-forecast" id="forecastStrip">
+        <div class="rf"><span class="d">Mon</span><span class="h">92°</span></div>
+        <div class="rf"><span class="d">Tue</span><span class="h">95°</span></div>
+        <div class="rf"><span class="d">Wed</span><span class="h">97°</span></div>
+        <div class="rf"><span class="d">Thu</span><span class="h">96°</span></div>
+      </div>
+      <div class="ribbon-divider"></div>
+      <div class="ribbon-title"><span class="dot space"></span>Space Wx</div>
+      <div class="ribbon-swx">
+        <span class="sv" id="rScale">R1</span><span class="sk">Radio</span>
+        <span class="sv" id="sScale">S0</span><span class="sk">Radiation</span>
+        <span class="sv" id="gScale">G0</span><span class="sk">Geomagnetic</span>
+        <span class="sv" id="kpVal">1.67</span><span class="sk">Kp</span>
+      </div>
+      <div class="ribbon-updated" id="weatherUpdated">source: NWS · NOAA SWPC</div>
+    </div>
+  </header>
+
+  <div class="main-area">
+
+    <!-- LEFT: 75% column — ticker + two data strips -->
+    <div class="col-left">
+
+      <!-- CREW STATUS SLIDESHOW (one slide per crew, cycling like a presentation —
+           replaces the old Live Feed ticker + Today's Schedule + Deliverables strips) -->
+      <section class="panel slideshow-panel" id="slideshowPanel">
+        <div class="panel-head">
+          <div class="panel-title"><span class="dot field"></span>Crew Status</div>
+          <div class="updated" id="slideshowUpdated">loading…</div>
+        </div>
+        <div class="slide-viewport" id="slideViewport">
+          <div class="slide active"><div class="slide-empty">Loading crew status…</div></div>
+        </div>
+        <div class="slide-dots" id="slideDots"></div>
+      </section>
+
+    </div>
+
+    <!-- RIGHT: 25% column — nav buttons + compact space weather -->
+    <div class="col-right">
+
+      <section class="panel nav-panel" id="navPanel">
+        <div class="panel-head">
+          <div class="panel-title"><span class="dot links"></span>Web Links</div>
+          <div class="updated">opens in new window</div>
+        </div>
+        <div class="nav-list">
+          <a class="nav-btn primary" href="https://guyaubreyfinn-rivco.github.io/Field-Scheduler/" target="_blank" rel="noopener">
+            <div class="icon">FS</div>
+            <div class="name">Field Scheduler — Full View</div>
+            <div class="go">↗</div>
+          </a>
+          <a class="nav-btn primary" href="https://guyaubreyfinn-rivco.github.io/Project-Deliverable/" target="_blank" rel="noopener">
+            <div class="icon">PD</div>
+            <div class="name">Project Deliverable — Full View</div>
+            <div class="go">↗</div>
+          </a>
+          <a class="nav-btn" href="https://www.arcgis.com/apps/webappviewer/index.html?id=26ab70d308c349dd934b1b65378c6544" target="_blank" rel="noopener">
+            <div class="icon">Ar</div>
+            <div class="name">ArcGIS Web App Viewer</div>
+            <div class="go">↗</div>
+          </a>
+          <a class="nav-btn" href="https://www.uasidekick.app/" target="_blank" rel="noopener">
+            <div class="icon">UA</div>
+            <div class="name">UAS Sidekick</div>
+            <div class="go">↗</div>
+          </a>
+          <a class="nav-btn" href="https://earth.google.com/web/" target="_blank" rel="noopener">
+            <div class="icon">GE</div>
+            <div class="name">Google Earth</div>
+            <div class="go">↗</div>
+          </a>
+          <a class="nav-btn" href="https://www.swpc.noaa.gov/" target="_blank" rel="noopener">
+            <div class="icon">SW</div>
+            <div class="name">Space Weather Prediction Center</div>
+            <div class="go">↗</div>
+          </a>
+        </div>
+      </section>
+
+    </div>
+
+  </div>
+</div>
+
+<script>
+  // ---------- CLOCK ----------
+  function getOrdinalDay(d){
+    const start = new Date(d.getFullYear(), 0, 1);
+    const diff = (d - start) + (start.getTimezoneOffset() - d.getTimezoneOffset()) * 60000;
+    return Math.floor(diff / 86400000) + 1;
+  }
+  function getJulianDayNumber(d){
+    const y = d.getFullYear(), m = d.getMonth()+1, day = d.getDate();
+    const a = Math.floor((14 - m)/12);
+    const yy = y + 4800 - a;
+    const mm = m + 12*a - 3;
+    return day + Math.floor((153*mm+2)/5) + 365*yy + Math.floor(yy/4) - Math.floor(yy/100) + Math.floor(yy/400) - 32045;
+  }
+  function tick(){
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString('en-US', { hour:'2-digit', minute:'2-digit', hour12:true });
+    const dateStr = now.toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric', year:'numeric' });
+    document.getElementById('clock').textContent = timeStr;
+    document.getElementById('dateline').textContent = dateStr;
+
+    const ordinal = String(getOrdinalDay(now)).padStart(3,'0');
+    const yy = String(now.getFullYear()).slice(-2);
+    const jdn = getJulianDayNumber(now);
+    document.getElementById('julianline').textContent =
+      `Julian date: ${yy}${ordinal} (day ${parseInt(ordinal,10)} of ${now.getFullYear()}) · JDN ${jdn}`;
+  }
+  tick();
+  setInterval(tick, 1000);
+
+  // ---------- LIVE WEATHER (NWS api.weather.gov) ----------
+  async function loadStationWeather(cfg){
+    try{
+      const obsRes = await fetch(`https://api.weather.gov/stations/${cfg.station}/observations/latest`);
+      const obs = await obsRes.json();
+      const p = obs.properties;
+      if(p.temperature.value != null){
+        document.getElementById(cfg.ids.temp).textContent = Math.round(p.temperature.value * 9/5 + 32) + '°';
+      }
+      if(p.textDescription){ document.getElementById(cfg.ids.cond).textContent = p.textDescription; }
+      if(p.relativeHumidity.value != null){ document.getElementById(cfg.ids.humidity).textContent = Math.round(p.relativeHumidity.value) + '%'; }
+      if(p.windSpeed.value != null){
+        const mph = Math.round(p.windSpeed.value * 0.621371);
+        document.getElementById(cfg.ids.wind).textContent = mph + ' mph';
+      }
+      if(p.visibility.value != null){
+        document.getElementById(cfg.ids.vis).textContent = Math.round(p.visibility.value / 1609.34) + ' mi';
+      }
+      document.getElementById(cfg.ids.updated).textContent = 'updated ' + new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'});
+    }catch(e){ console.log(`Weather fetch unavailable for ${cfg.station}, showing cached snapshot.`, e); }
+
+    try{
+      const ptRes = await fetch(`https://api.weather.gov/points/${cfg.lat},${cfg.lon}`);
+      const pt = await ptRes.json();
+      const fRes = await fetch(pt.properties.forecast);
+      const f = await fRes.json();
+      const targetDays = ['Monday','Tuesday','Wednesday','Thursday'];
+      const periods = f.properties.periods.filter(per => per.isDaytime && targetDays.includes(per.name));
+      const strip = document.getElementById(cfg.ids.strip);
+      strip.innerHTML = '';
+      periods.forEach(per=>{
+        const div = document.createElement('div');
+        div.className = 'rf';
+        div.innerHTML = `<span class="d">${per.name.slice(0,3)}</span><span class="h">${per.temperature}°</span>`;
+        strip.appendChild(div);
+      });
+    }catch(e){ console.log(`Forecast fetch unavailable for ${cfg.station}, showing cached snapshot.`, e); }
+  }
+
+  const riversideCfg = {
+    station: 'KRAL', lat: 33.9936, lon: -117.383,
+    ids: { temp:'wTemp', cond:'wCond', humidity:'wHumidity', wind:'wWind', vis:'wVis', updated:'weatherUpdated', strip:'forecastStrip' }
+  };
+
+  // ---------- LIVE SPACE WEATHER (NOAA SWPC), merged into header ribbon ----------
+  async function loadSpaceWeather(){
+    try{
+      const res = await fetch('https://services.swpc.noaa.gov/products/noaa-scales.json');
+      const data = await res.json();
+      const today = data['0'];
+      if(today){
+        document.getElementById('rScale').textContent = 'R' + today.R.Scale;
+        document.getElementById('sScale').textContent = 'S' + today.S.Scale;
+        document.getElementById('gScale').textContent = 'G' + today.G.Scale;
+      }
+      document.getElementById('weatherUpdated').textContent = 'source: NWS · NOAA SWPC · updated ' + new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'});
+    }catch(e){ console.log('Space weather fetch unavailable, showing cached snapshot.', e); }
+  }
+
+  loadStationWeather(riversideCfg);
+  loadSpaceWeather();
+  setInterval(()=>loadStationWeather(riversideCfg), 15*60*1000);
+  setInterval(loadSpaceWeather, 15*60*1000);
+
+  // ---------- FULLSCREEN TOGGLE ----------
+  const fsToggle = document.getElementById('fsToggle');
+  function updateFsIcon(){
+    fsToggle.textContent = document.fullscreenElement ? '×' : '⛶';
+    fsToggle.title = document.fullscreenElement
+      ? 'Exit fullscreen (show browser bar)'
+      : 'Toggle fullscreen (hide browser bar)';
+  }
+  fsToggle.addEventListener('click', ()=>{
+    if(!document.fullscreenElement){
+      document.documentElement.requestFullscreen().catch(err=>{
+        console.log('Fullscreen request failed — some TV browsers restrict this API.', err);
+      });
+    } else {
+      document.exitFullscreen();
+    }
+  });
+  document.addEventListener('fullscreenchange', updateFsIcon);
+
+  // ================================================================
+  // SHARED SHEET HELPERS (Field Scheduler + Project Deliverable Status)
+  // ================================================================
+
+  function escapeHtml(s){
+    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  // Minimal CSV parser that handles quoted fields containing commas/newlines.
+  function parseCSV(text){
+    const rows = [];
+    let field = '', row = [], inQuotes = false;
+    for (let i = 0; i < text.length; i++){
+      const c = text[i], next = text[i+1];
+      if (inQuotes){
+        if (c === '"' && next === '"'){ field += '"'; i++; }
+        else if (c === '"'){ inQuotes = false; }
+        else { field += c; }
+      } else {
+        if (c === '"'){ inQuotes = true; }
+        else if (c === ','){ row.push(field); field = ''; }
+        else if (c === '\r'){ /* skip */ }
+        else if (c === '\n'){ row.push(field); rows.push(row); row = []; field = ''; }
+        else { field += c; }
+      }
+    }
+    if (field.length || row.length){ row.push(field); rows.push(row); }
+    return rows.filter(r => r.some(v => v !== ''));
+  }
+
+  // Explicit US-locale date parsing (M/D/YYYY) to avoid misreading DD/MM on
+  // dates in the 1st–12th, plus an ISO fallback. Returns a local-midnight Date.
+  function isSameDay(a, b){
+    return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+  }
+  function startOfToday(){
+    const n = new Date();
+    return new Date(n.getFullYear(), n.getMonth(), n.getDate());
+  }
+  function startOfDayOf(d){
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  }
+
+  const FIELD_SCHEDULER_ID = '1_DeFuavAd1fw_-0OPZ1Puye5Tif_uwn3RIdduv5FZzk';
+  const DELIVERABLE_STATUS_ID = '19IKyBWJ87GXUbL-hfX_g2vLdasQKgnbYUVcENMmj5e8';
+  const DELIVERABLE_SHEET_NAME = 'Sheet1'; // matches the tab name used by the deployed Project-Deliverable app
+
+  // ---- Project Deliverable parsing, ported directly from that app's own source ----
+  // (uploaded index.html) so status classification — Complete / Changed since
+  // last review / Due soon or overdue — always matches the deployed dashboard.
+  function isWorkDay(d){ const day = d.getDay(); return day >= 1 && day <= 4; } // Mon–Thu work week, per that app
+  function workDaysUntil(due){
+    const today = new Date(); today.setHours(0,0,0,0);
+    const end = new Date(due); end.setHours(0,0,0,0);
+    if (end < today) return -1; // overdue
+    let d = new Date(today), count = 0;
+    while (d <= end){ if (isWorkDay(d)) count++; d.setDate(d.getDate() + 1); }
+    return count;
+  }
+
+  async function fetchDeliverableRows(){
+    const url = `https://docs.google.com/spreadsheets/d/${DELIVERABLE_STATUS_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(DELIVERABLE_SHEET_NAME)}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const text = await res.text();
+    const rows = parseCSV(text);
+    if (!rows.length) throw new Error('empty sheet');
+
+    const header = rows[0].map(h => h.trim());
+    const idx = (name) => header.findIndex(h => h.toLowerCase() === name.toLowerCase());
+    const cWO = idx('Work Order Number');
+    const cProj = idx('Project Name');
+    const cTask = idx('Task');
+    const cStatus = idx('Status');
+    const cPIC = idx('PIC');
+    const cPct = idx('Overalll % Complete') >= 0 ? idx('Overalll % Complete') : idx('Overall % Complete');
+    const cDue = idx('Due Date');
+    const cNotes = idx('Notes');
+    const cPrevStatus = idx('Prev Status');
+    const cPrevPIC = idx('Prev PIC');
+
+    const parsed = [];
+    for (let r = 1; r < rows.length; r++){
+      const row = rows[r];
+      if (!row || row.every(v => v === '')) continue;
+      const wo = (cWO >= 0 ? row[cWO] : '') || '';
+      if (!wo) continue;
+
+      const project = (cProj >= 0 ? row[cProj] : '') || '';
+      const task = (cTask >= 0 ? row[cTask] : '') || '';
+      const status = ((cStatus >= 0 ? row[cStatus] : '') || '').trim();
+      const pic = ((cPIC >= 0 ? row[cPIC] : '') || '').trim();
+      const pctRaw = (cPct >= 0 ? row[cPct] : '') || '';
+      const dueRaw = (cDue >= 0 ? row[cDue] : '') || '';
+      const notes = (cNotes >= 0 ? row[cNotes] : '') || '';
+      const prevStatus = cPrevStatus >= 0 ? ((row[cPrevStatus] || '').trim()) : status;
+      const prevPIC = cPrevPIC >= 0 ? ((row[cPrevPIC] || '').trim()) : pic;
+
+      let cls = '';
+      const dueParsed = dueRaw ? new Date(dueRaw) : null;
+      const dueDate = (dueParsed && !isNaN(dueParsed)) ? dueParsed : null;
+
+      if (status.toLowerCase() === 'complete'){
+        cls = 'status-green';
+      } else if (status !== prevStatus || pic !== prevPIC){
+        cls = 'status-yellow';
+      } else if (dueDate){
+        const wd = workDaysUntil(dueDate);
+        if (wd <= 2) cls = 'status-red';
+      }
+
+      parsed.push({ wo, project, task, status, pic, pctRaw, dueRaw, dueDate, notes, cls });
+    }
+    return parsed;
+  }
+
+  // ---- Field Scheduler parsing, ported directly from that app's own source ----
+  // (uploaded index.html) so the board always classifies rows exactly the way
+  // the deployed dashboard does — same header matching, same date rules, same
+  // scheduled/progress/done/overdue logic.
+  const STATUS_COLORS = { scheduled:'var(--sched-scheduled)', progress:'var(--sched-progress)', done:'var(--sched-done)', overdue:'var(--sched-overdue)', none:'var(--sched-none)' };
+  const STATUS_LABELS = { scheduled:'Scheduled', progress:'In progress', done:'Complete', overdue:'Overdue', none:'Unspecified' };
+
+  function normalizeHeader(h){ return String(h||'').toLowerCase().replace(/[^a-z]/g,''); }
+  function findKey(headerMap, candidates){
+    for (const c of candidates){ if (headerMap[c] !== undefined) return headerMap[c]; }
+    return null;
+  }
+  function parseFlexibleDate(str){
+    if (!str) return null;
+    str = String(str).trim();
+    if (!str) return null;
+    const parts = str.split(/[\/\-]/);
+    if (parts.length !== 3){
+      const d2 = new Date(str);
+      return isNaN(d2.getTime()) ? null : d2;
+    }
+    let a = parseInt(parts[0],10), b = parseInt(parts[1],10), y = parseInt(parts[2],10);
+    if (isNaN(a) || isNaN(b) || isNaN(y)) return null;
+    if (y < 100) y += 2000;
+    let day, month;
+    if (a > 12){ day = a; month = b; }
+    else if (b > 12){ day = b; month = a; }
+    else { month = a; day = b; } // default MM/DD (US format)
+    const d = new Date(y, month-1, day);
+    return isNaN(d.getTime()) ? null : d;
+  }
+  function classifyStatus(statusRaw, dueDate){
+    const s = (statusRaw||'').toLowerCase();
+    const today = startOfToday();
+    if (/complete|done|closed|finished/.test(s)) return 'done';
+    if (/overdue|late/.test(s)) return 'overdue';
+    if (dueDate && startOfDayOf(dueDate) < today) return 'overdue';
+    if (/progress|active|in\s*progress|working/.test(s)) return 'progress';
+    return 'scheduled';
+  }
+
+  async function fetchFieldSchedulerRows(){
+    // Same gviz endpoint, gid, and cache-busting param as the deployed app.
+    const url = `https://docs.google.com/spreadsheets/d/${FIELD_SCHEDULER_ID}/gviz/tq?tqx=out:csv&gid=0&headers=1&_ts=${Date.now()}`;
+    const res = await fetch(url, { cache: 'no-store' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const csvText = await res.text();
+    const raw = parseCSV(csvText.trim());
+    if (!raw || raw.length < 1) throw new Error('Empty sheet');
+
+    // Scan the first few rows for the real header row, exactly as the deployed app does.
+    const candidateSets = [['crew'],['basecrew'],['supportcrew'],['workordernumber','workorder','wo'],
+      ['projectname','project'],['phase'],['scheduletype'],['task'],['scheduledate'],['duedate'],
+      ['status'],['accountbalance','projectbalance','balance','projectbudget','budget']];
+    let headerRowIdx = 0, bestScore = -1;
+    for (let hr = 0; hr < Math.min(raw.length, 5); hr++){
+      const trialMap = {};
+      (raw[hr] || []).forEach((h, i) => { trialMap[normalizeHeader(h)] = i; });
+      let score = 0;
+      candidateSets.forEach(cands => { for (const c of cands){ if (trialMap[c] !== undefined){ score++; break; } } });
+      if (score > bestScore){ bestScore = score; headerRowIdx = hr; }
+    }
+    if (bestScore <= 0) throw new Error('Could not find a recognizable header row.');
+
+    const headers = raw[headerRowIdx];
+    const headerMap = {};
+    headers.forEach((h, i) => { headerMap[normalizeHeader(h)] = i; });
+
+    const kCrew = findKey(headerMap, ['crew']);
+    const kWO = findKey(headerMap, ['workordernumber','workorder','wo']);
+    const kProject = findKey(headerMap, ['projectname','project']);
+    const kPhase = findKey(headerMap, ['phase']);
+    const kSchedDate = findKey(headerMap, ['scheduledate']);
+    const kDueDate = findKey(headerMap, ['duedate']);
+    const kStatus = findKey(headerMap, ['status']);
+    const kScheduleType = findKey(headerMap, ['scheduletype']);
+
+    const rows = [];
+    for (let i = headerRowIdx + 1; i < raw.length; i++){
+      const r = raw[i];
+      if (!r || r.every(c => !c || !String(c).trim())) continue;
+      const schedDate = kSchedDate !== null ? parseFlexibleDate(r[kSchedDate]) : null;
+      const dueDate = kDueDate !== null ? parseFlexibleDate(r[kDueDate]) : null;
+      if (!schedDate && !dueDate) continue;
+      const statusRaw = kStatus !== null ? r[kStatus] : '';
+      // scheduleTypeRaw is `null` when the sheet has no Schedule Type column at
+      // all (vs. an empty string when the column exists but the cell is blank)
+      // so callers can tell "no such column" apart from "blank value".
+      const scheduleTypeRaw = kScheduleType !== null ? (r[kScheduleType]||'').trim() : null;
+      rows.push({
+        crew: kCrew !== null ? (r[kCrew]||'').trim() : '',
+        workOrder: kWO !== null ? (r[kWO]||'').trim() : '',
+        project: kProject !== null ? (r[kProject]||'').trim() : '',
+        phase: kPhase !== null ? (r[kPhase]||'').trim() : '',
+        schedDate, dueDate, statusRaw, scheduleTypeRaw,
+        status: classifyStatus(statusRaw, dueDate)
+      });
+    }
+    return rows;
+  }
+
+  // "Active" for the crew slideshow is driven by the Schedule Type column
+  // (TBD, Due, Scheduled, Rescheduled, Priority all count as active). If the
+  // sheet has no Schedule Type column at all, fall back to the old
+  // Status-based done/not-done classification so nothing breaks.
+  const ACTIVE_SCHEDULE_TYPES = ['tbd', 'due', 'scheduled', 'rescheduled', 'priority'];
+  function isRowActive(r){
+    if (r.scheduleTypeRaw !== null) return ACTIVE_SCHEDULE_TYPES.includes(r.scheduleTypeRaw.toLowerCase());
+    return r.status !== 'done';
+  }
+
+  // ================================================================
+  // CREW STATUS SLIDESHOW
+  // One slide per crew (from Field Scheduler), showing that crew's active
+  // work items — each item cross-matched to Project Deliverable rows by
+  // Work Order Number so a crew's deliverable status shows on their own
+  // slide. Deliverable rows whose WO doesn't match any known crew
+  // assignment get grouped onto a trailing "Unassigned Deliverables" slide
+  // so nothing is silently dropped. Crews with nothing active still get a
+  // slide ("No active work assigned right now.").
+  // ================================================================
+
+  const SLIDE_ADVANCE_MS = 12 * 1000;
+  let crewSlides = [];
+  let slideIndex = 0;
+  let slideAdvanceTimer = null;
+
+  function buildCrewSlides(schedRows, delivRows){
+    const byCrew = new Map();
+    schedRows.forEach(r => {
+      const key = r.crew || 'Unassigned Crew';
+      if (!byCrew.has(key)) byCrew.set(key, []);
+      byCrew.get(key).push(r);
+    });
+
+    const delivByWO = new Map();
+    delivRows.forEach(d => {
+      if (!d.wo) return;
+      if (!delivByWO.has(d.wo)) delivByWO.set(d.wo, []);
+      delivByWO.get(d.wo).push(d);
+    });
+
+    const crewNames = Array.from(byCrew.keys()).sort((a, b) => a.localeCompare(b));
+    const slides = crewNames.map(crew => {
+      const items = byCrew.get(crew)
+        .filter(isRowActive)
+        .map(r => ({
+          ...r,
+          deliverables: r.workOrder && delivByWO.has(r.workOrder)
+            ? delivByWO.get(r.workOrder).filter(d => d.cls !== 'status-green')
+            : []
+        }));
+      return { crew, items };
+    });
+
+    // Deliverables whose WO doesn't tie back to any Field Scheduler row at all
+    // (active or done) get their own trailing slide rather than being dropped.
+    const knownWO = new Set();
+    schedRows.forEach(r => { if (r.workOrder) knownWO.add(r.workOrder); });
+    const orphanDeliverables = delivRows.filter(d => d.wo && !knownWO.has(d.wo) && d.cls !== 'status-green');
+    if (orphanDeliverables.length){
+      slides.push({ crew: 'Unassigned Deliverables', items: [], orphanDeliverables });
+    }
+
+    return slides;
+  }
+
+  function buildSlideItemHtml(item){
+    const color = STATUS_COLORS[item.status];
+    const dateStr = item.dueDate
+      ? 'Due ' + item.dueDate.toLocaleDateString('en-US',{month:'short',day:'numeric'})
+      : (item.schedDate ? 'Scheduled ' + item.schedDate.toLocaleDateString('en-US',{month:'short',day:'numeric'}) : '');
+    const delivHtml = item.deliverables.map(d => `
+      <div class="slide-deliv ${d.cls === 'status-red' ? 'overdue' : ''}">
+        <span class="tag">Deliverable</span>
+        ${escapeHtml(d.status || '—')}${d.dueRaw ? ' · due ' + escapeHtml(d.dueRaw) : ''}
+      </div>`).join('');
+    return `
+      <div class="slide-item" style="border-left-color:${color}">
+        <div class="slide-item-top">
+          <span class="slide-wo">${item.workOrder ? 'WO ' + escapeHtml(item.workOrder) : ''}</span>
+          <span class="slide-project">${escapeHtml(item.project || '')}</span>
+          <span class="slide-status-pill" style="background:${color}">${STATUS_LABELS[item.status]}</span>
+        </div>
+        <div class="slide-item-sub">${[item.phase, dateStr].filter(Boolean).map(escapeHtml).join(' · ')}</div>
+        ${delivHtml}
+      </div>`;
+  }
+
+  function buildOrphanDelivHtml(d){
+    const color = d.cls === 'status-red' ? 'var(--warn)' : 'var(--links)';
+    return `
+      <div class="slide-item" style="border-left-color:${color}">
+        <div class="slide-item-top">
+          <span class="slide-wo">${d.wo ? 'WO ' + escapeHtml(d.wo) : ''}</span>
+          <span class="slide-project">${escapeHtml(d.project || '')}</span>
+          <span class="slide-status-pill" style="background:${color}">${escapeHtml(d.status || '—')}</span>
+        </div>
+        <div class="slide-item-sub">${d.dueRaw ? 'Due ' + escapeHtml(d.dueRaw) : ''}</div>
+      </div>`;
+  }
+
+  function renderSlides(){
+    const viewport = document.getElementById('slideViewport');
+    const dots = document.getElementById('slideDots');
+
+    if (crewSlides.length === 0){
+      viewport.innerHTML = `<div class="slide active"><div class="slide-empty">No crew or deliverable data available right now.</div></div>`;
+      dots.innerHTML = '';
+      return;
+    }
+
+    viewport.innerHTML = crewSlides.map((s, i) => {
+      let body;
+      if (s.orphanDeliverables) body = s.orphanDeliverables.map(buildOrphanDelivHtml).join('');
+      else if (s.items.length === 0) body = `<div class="slide-empty">No active work assigned right now.</div>`;
+      else body = s.items.map(buildSlideItemHtml).join('');
+      return `
+        <div class="slide ${i === 0 ? 'active' : ''}">
+          <div class="slide-crew-name">${escapeHtml(s.crew)}</div>
+          <div class="slide-items">${body}</div>
+        </div>`;
+    }).join('');
+
+    dots.innerHTML = crewSlides.map((s, i) => `<span class="slide-dot ${i === 0 ? 'active' : ''}" title="${escapeHtml(s.crew)}"></span>`).join('');
+  }
+
+  function showSlide(idx){
+    document.querySelectorAll('#slideViewport .slide').forEach((el, i) => el.classList.toggle('active', i === idx));
+    document.querySelectorAll('#slideDots .slide-dot').forEach((el, i) => el.classList.toggle('active', i === idx));
+  }
+
+  function advanceSlide(){
+    if (crewSlides.length === 0) return;
+    slideIndex = (slideIndex + 1) % crewSlides.length;
+    showSlide(slideIndex);
+  }
+
+  async function loadCrewSlideshow(){
+    const updated = document.getElementById('slideshowUpdated');
+    const schedRows = await fetchFieldSchedulerRows().catch(e => { console.log('Slideshow: Field Scheduler feed unavailable.', e); return []; });
+    const delivRows = await fetchDeliverableRows().catch(e => { console.log('Slideshow: Deliverable Status feed unavailable.', e); return []; });
+
+    crewSlides = buildCrewSlides(schedRows, delivRows);
+    slideIndex = 0;
+    renderSlides();
+    updated.textContent = 'updated ' + new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'});
+  }
+
+  loadCrewSlideshow();
+  setInterval(loadCrewSlideshow, 3 * 60 * 1000);
+  clearInterval(slideAdvanceTimer);
+  slideAdvanceTimer = setInterval(advanceSlide, SLIDE_ADVANCE_MS);
+</script>
+</body>
+</html>
